@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.0.1
+
+Aligns the credential with n8n's [Managed OAuth
+guidelines](https://sites.n8n.io/managed-oauth-guidelines), which opens Managed
+OAuth to nodes built by the owner of the underlying service. No behaviour or
+field values change; the credential already matched the required shape.
+
+- Documented n8n's **production** callback URL,
+  `https://oauth.n8n.cloud/oauth2/callback`. Only the localhost callback was
+  listed before, which is the one a Cloud connect attempt does *not* use, so a
+  DevPortal app configured from the old README would reject it.
+- `ZoomInfoPkceOAuth2Api.documentationUrl` now opens this README's Credentials
+  section instead of ZoomInfo's PKCE page. That is the "Docs" link in the
+  credential dialog, and the README is where the callback URLs, the
+  rotating-refresh-token caveat and the scope rationale actually live.
+- README section on Managed OAuth: what Cloud users see, that bring-your-own-app
+  remains available, and that a shared app changes who holds the client
+  credentials without widening whose data a workflow can reach — the PKCE user
+  login still binds each execution to the signed-in user's entitlements.
+- Recorded why `scope` is empty rather than a fixed list, in both the credential
+  and the README. Omitting it requests exactly the app's DevPortal scope
+  selection; naming a scope the app lacks fails the whole token exchange.
+
 ## 1.0.0
 
 Initial release, published as `@zoominfo/n8n-nodes-zoominfo`. The scope is

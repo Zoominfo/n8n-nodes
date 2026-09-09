@@ -34,26 +34,45 @@ public-client PKCE implementations, the token exchange still requires your
 `client_secret` alongside the `code_verifier`. n8n sends both, so fill in Client ID
 *and* Client Secret.
 
-Add n8n's OAuth callback to the **Sign-in Redirect URIs** list on your DevPortal app —
-it must match exactly on both the authorize and token calls:
+Add n8n's OAuth callbacks to the **Sign-in Redirect URIs** list on your DevPortal
+app. They must match exactly on both the authorize and token calls, so add both:
 
 ```
+https://oauth.n8n.cloud/oauth2/callback
 http://localhost:5678/rest/oauth2-credential/callback
 ```
 
-Replace the host with your n8n instance URL when not running locally.
+The first is n8n's production callback, used by Cloud. The second is for local and
+self-hosted instances — replace the host with your own instance URL when it is not
+localhost.
 
 > **One caveat worth knowing.** ZoomInfo issues **single-use, rotating** refresh tokens
 > on this flow: every refresh invalidates the previous token. If two executions of the
 > same workflow refresh concurrently, one kills the other's token and the credential
 > must be reconnected by hand. Keep concurrency at 1 on schedules that run unattended.
 
+### Managed OAuth on n8n Cloud
+
+n8n offers [Managed OAuth](https://sites.n8n.io/managed-oauth-guidelines) for nodes
+built by the owner of the underlying service. Under it, ZoomInfo registers one OAuth
+app and n8n holds the client ID and secret, so Cloud users get a single **connect**
+button and never have to create a DevPortal app of their own. Anyone who prefers
+their own app keeps that option, and self-hosted instances continue to use it.
+
+This changes who owns the client credentials, not whose data a workflow sees. The
+flow is still an authorization-code + PKCE user login: each person signs in with
+their own ZoomInfo username and password, and the workflow runs with that user's
+entitlements. A shared app does not pool or widen access.
+
 ### Scopes
 
-The credential deliberately sends **no** `scope` parameter. ZoomInfo grants every
-scope selected for your app in the DevPortal when `scope` is omitted, whereas
-requesting a scope your app does not hold fails the entire token request. Manage
-entitlements in the DevPortal, not here.
+The credential deliberately sends **no** `scope` parameter. This is not the same as
+requesting everything: ZoomInfo grants exactly the scopes selected for your app in
+the DevPortal when `scope` is omitted, whereas naming a scope your app does not hold
+fails the entire token request. The app registration is the ceiling, so sending
+nothing asks for that set and nothing wider — and it holds equally for a customer's
+own app and for the shared app behind Managed OAuth. Manage entitlements in the
+DevPortal, not here.
 
 ## Operations
 
