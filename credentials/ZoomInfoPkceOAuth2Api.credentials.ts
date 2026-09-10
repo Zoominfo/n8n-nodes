@@ -16,6 +16,14 @@ import type { Icon, ICredentialTestRequest, ICredentialType, INodeProperties } f
  * requires the `client_credentials` grant to be enabled on the DevPortal app —
  * which is not the default, so the common outcome was an `unauthorized_client`
  * dead end for anyone who picked it.
+ *
+ * This is also the credential n8n's Managed OAuth targets. `clientId` and
+ * `clientSecret` are deliberately not declared here: they are inherited from
+ * `oAuth2Api`, which is the hook Managed OAuth fills in. On Cloud, n8n supplies
+ * both from ZoomInfo's shared app and the user only sees a connect button;
+ * everywhere else the user registers their own DevPortal app and enters the pair
+ * by hand. Every other property stays `hidden` so neither path can misconfigure
+ * an endpoint. See https://sites.n8n.io/managed-oauth-guidelines.
  */
 export class ZoomInfoPkceOAuth2Api implements ICredentialType {
 	name = 'zoomInfoPkceOAuth2Api';
@@ -24,9 +32,20 @@ export class ZoomInfoPkceOAuth2Api implements ICredentialType {
 
 	displayName = 'ZoomInfo GTM PKCE OAuth2 API';
 
+	// A single icon, deliberately, matching the node: the mark is a self-contained
+	// red tile with a white glyph and reads on both canvases. n8n's lint rule and
+	// the Managed OAuth example both show the `{ light, dark }` form, but pointing
+	// both variants at this same file would only imply a dark treatment that does
+	// not exist. See the note in nodes/ZoomInfo/ZoomInfo.node.ts.
 	icon: Icon = 'file:../icons/zoominfo.svg';
 
-	documentationUrl = 'https://docs.zoominfo.com/docs/authorization-code-flow-pkce';
+	// The README, not ZoomInfo's PKCE page. This is the "Docs" link in the
+	// credential dialog, so it should open what a setup actually trips over: both
+	// n8n callback URLs, the rotating-refresh-token caveat, and why no scope is
+	// sent. ZoomInfo's own page covers none of those, and two of its endpoint
+	// values are wrong (see the Authorization URL note below).
+	documentationUrl =
+		'https://github.com/Zoominfo/n8n-nodes-zoominfo?tab=readme-ov-file#credentials';
 
 	properties: INodeProperties[] = [
 		{
@@ -54,10 +73,14 @@ export class ZoomInfoPkceOAuth2Api implements ICredentialType {
 			default: 'https://api.zoominfo.com/gtm/oauth/v1/token',
 			required: true,
 		},
-		// Left empty deliberately. ZoomInfo grants *all* scopes selected for the
-		// app in DevPortal when `scope` is omitted, whereas requesting a scope the
-		// app does not hold fails the whole token request. An empty default is
-		// therefore correct for every customer, regardless of their entitlements.
+		// Left empty deliberately, and not the same thing as "all scopes".
+		// ZoomInfo grants exactly the scopes selected for the app in DevPortal when
+		// `scope` is omitted, whereas requesting a scope the app does not hold fails
+		// the whole token request. The app registration is therefore the ceiling: an
+		// empty default asks for that set and nothing wider, which is correct both
+		// for a customer's own app and for the shared app behind Managed OAuth.
+		// Hard-coding a list here would only reintroduce the failure mode — one
+		// entry the app lacks breaks every connect.
 		{
 			displayName: 'Scope',
 			name: 'scope',
