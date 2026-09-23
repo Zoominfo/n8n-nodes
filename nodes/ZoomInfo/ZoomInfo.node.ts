@@ -16,7 +16,7 @@ export class ZoomInfo implements INodeType {
 		group: ['input'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
-		description: 'Consume the ZoomInfo GTM API',
+		description: 'Connect verified B2B company and contact intelligence to research accounts, find buyers, and act on buying signals.',
 		defaults: {
 			name: 'ZoomInfo',
 		},
