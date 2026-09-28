@@ -1,7 +1,8 @@
 # @zoominfo/n8n-nodes-zoominfo
 
 An [n8n](https://n8n.io) community node for the **ZoomInfo GTM API** — contact and
-company search and enrichment, intent signals, scoops, news, and usage reporting.
+company search and enrichment, org charts, corporate hierarchy, technologies,
+hashtags, intent signals, scoops, news, reference lookups, and usage reporting.
 
 [n8n](https://n8n.io) is a [fair-code licensed](https://docs.n8n.io/privacy-and-security/sustainable-use-license)
 workflow automation platform.
@@ -84,14 +85,33 @@ Base URL: `https://api.zoominfo.com/gtm/data/v1`
 | Contact | Enrich | `POST /contacts/enrich` | `ContactEnrich` |
 | Company | Search | `POST /companies/search` | `CompanySearch` |
 | Company | Enrich | `POST /companies/enrich` | `CompanyEnrich` |
+| Company | Enrich Org Chart | `POST /companies/org-chart/enrich` | `OrgChartEnrich` |
+| Company | Enrich Corporate Hierarchy | `POST /companies/corporate-hierarchy/enrich` | `CorporateHierarchyEnrich` |
+| Company | Enrich Technologies | `POST /companies/technologies/enrich` | `TechnologyEnrich` |
+| Company | Enrich Hashtags | `POST /companies/hashtags/enrich` | `HashtagEnrich` |
 | Signal | Search Intent | `POST /intent/search` | `IntentSearch` |
 | Signal | Search Scoops | `POST /scoops/search` | `ScoopSearch` |
 | Signal | Search News | `POST /news/search` | `NewsSearch` |
+| Signal | Enrich Intent | `POST /intent/enrich` | `IntentEnrich` |
+| Signal | Enrich Scoops | `POST /scoops/enrich` | `ScoopEnrich` |
+| Signal | Enrich News | `POST /news/enrich` | `NewsEnrich` |
+| Lookup | Get Data | `GET /lookup/{fieldName}` | — |
+| Lookup | Get Search Fields | `GET /lookup/search` | — |
+| Lookup | Get Enrich Fields | `GET /lookup/enrich` | — |
 | Usage | Get | `GET /users/usage` | — |
 
 `Usage → Get` consumes no credits, which makes it a good first call for verifying that
-a credential works. Search operations consume no credits either, though every request
-counts against your rate limits.
+a credential works. `Lookup` operations consume no credits either, since they return
+static reference data rather than ZoomInfo records. Search and Enrich operations do
+count against your rate limits and, for Enrich, your credit balance.
+
+`Lookup → Get Data` reads reference values for a field name such as `industries`,
+`job-titles`, `tech-vendors`, or `company-rankings`. Two of these fields — intent
+topics and org chart departments — are also surfaced directly as dropdowns on
+`Signal → Search Intent`/`Enrich Intent` and `Company → Enrich Org Chart`, so picking
+from the list is usually simpler than a separate Lookup call.
+`Lookup → Get Search Fields` and `Get Enrich Fields` return the input/output field
+names a given entity's Search or Enrich endpoint accepts.
 
 ### Attributes
 
@@ -245,7 +265,7 @@ Takes a name and company and returns ZoomInfo's data for it. `matchPersonInput` 
       "parameters": {
         "resource": "contact",
         "operation": "enrich",
-        "attributes": "{\n  \"matchPersonInput\": [\n    { \"firstName\": \"Henry\", \"lastName\": \"Schuck\", \"companyName\": \"ZoomInfo\" }\n  ],\n  \"outputFields\": [\"id\", \"email\", \"jobTitle\", \"companyName\"]\n}"
+        "attributes": "{\n  \"matchPersonInput\": [\n    { \"firstName\": \"Jane\", \"lastName\": \"Doe\", \"companyName\": \"ZoomInfo\" }\n  ],\n  \"outputFields\": [\"id\", \"email\", \"jobTitle\", \"companyName\"]\n}"
       },
       "type": "@zoominfo/n8n-nodes-zoominfo.zoomInfo",
       "typeVersion": 1,
@@ -353,7 +373,7 @@ machine, and `prepublishOnly` blocks one.
 ## Roadmap
 
 - Typed request fields for the most common attributes, replacing the JSON pass-through
-- Remaining endpoints: lookup, org charts, technologies, corporate hierarchy, audiences
+- Remaining API families: Audience (Studio) API, Agents API, Context (Copilot) API
 - Surface `detail` from platform-validation errors in the headline message, which needs
   `ignoreHttpStatusErrors` plus hand-rolled error mapping (see *Error responses*)
 

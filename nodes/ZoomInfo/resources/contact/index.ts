@@ -57,11 +57,17 @@ export const contactDescription: INodeProperties[] = [
 		],
 		default: 'search',
 	},
-	attributesProperty(showForSearch, 'Example: {"companyName": "ZoomInfo", "jobTitle": "engineer"}'),
+	attributesProperty(
+		showForSearch,
+		'Example: {"companyName": "ZoomInfo", "jobTitle": "engineer"}. Use the Lookup resource\'s ' +
+			'"Get Search Fields" operation (Entity: Contact) to see all valid search fields.',
+	),
 	// matchPersonInput and outputFields are both required by the enrich endpoint.
 	attributesProperty(
 		showForEnrich,
-		'Example: {"matchPersonInput": [{"firstName": "Henry", "lastName": "Schuck", "companyName": "ZoomInfo"}], "outputFields": ["id", "email", "jobTitle"]}',
+		'Example: {"matchPersonInput": [{"firstName": "Jane", "lastName": "Doe", "companyName": "ZoomInfo"}], "outputFields": ["id", "email", "jobTitle"]}. ' +
+			'Use the Lookup resource\'s "Get Enrich Fields" operation (Entity: Contact) to see all valid ' +
+			'matchPersonInput (Field Type: Input) and outputFields (Field Type: Output) values.',
 	),
 	...sortProperties(
 		showForSearch,

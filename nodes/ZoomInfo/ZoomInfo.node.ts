@@ -1,8 +1,16 @@
-import { NodeConnectionTypes, type INodeType, type INodeTypeDescription } from 'n8n-workflow';
-import { contactDescription } from './resources/contact';
+import type {
+	ILoadOptionsFunctions,
+	INodePropertyOptions,
+	INodeType,
+	INodeTypeDescription,
+} from 'n8n-workflow';
+import { NodeConnectionTypes } from 'n8n-workflow';
 import { companyDescription } from './resources/company';
+import { contactDescription } from './resources/contact';
+import { lookupDescription } from './resources/lookup';
 import { signalDescription } from './resources/signal';
 import { usageDescription } from './resources/usage';
+import { BASE_URL, getLookupOptions } from './shared/utils';
 
 export class ZoomInfo implements INodeType {
 	description: INodeTypeDescription = {
@@ -30,7 +38,7 @@ export class ZoomInfo implements INodeType {
 			},
 		],
 		requestDefaults: {
-			baseURL: 'https://api.zoominfo.com/gtm/data/v1',
+			baseURL: BASE_URL,
 			headers: {
 				Accept: 'application/vnd.api+json',
 				'Content-Type': 'application/vnd.api+json',
@@ -44,12 +52,16 @@ export class ZoomInfo implements INodeType {
 				noDataExpression: true,
 				options: [
 					{
+						name: 'Company',
+						value: 'company',
+					},
+					{
 						name: 'Contact',
 						value: 'contact',
 					},
 					{
-						name: 'Company',
-						value: 'company',
+						name: 'Lookup',
+						value: 'lookup',
 					},
 					{
 						name: 'Signal',
@@ -62,10 +74,22 @@ export class ZoomInfo implements INodeType {
 				],
 				default: 'contact',
 			},
-			...contactDescription,
 			...companyDescription,
+			...contactDescription,
+			...lookupDescription,
 			...signalDescription,
 			...usageDescription,
 		],
+	};
+
+	methods = {
+		loadOptions: {
+			async getDepartments(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+				return getLookupOptions.call(this, 'departments');
+			},
+			async getIntentTopics(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+				return getLookupOptions.call(this, 'intent-topics');
+			},
+		},
 	};
 }

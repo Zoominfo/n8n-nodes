@@ -28,11 +28,22 @@ const EXPECTED = {
 	company: {
 		search: ['POST', '/companies/search', 'CompanySearch'],
 		enrich: ['POST', '/companies/enrich', 'CompanyEnrich'],
+		enrichOrgChart: ['POST', '/companies/org-chart/enrich', 'OrgChartEnrich'],
+		enrichCorporateHierarchy: [
+			'POST',
+			'/companies/corporate-hierarchy/enrich',
+			'CorporateHierarchyEnrich',
+		],
+		enrichTechnologies: ['POST', '/companies/technologies/enrich', 'TechnologyEnrich'],
+		enrichHashtags: ['POST', '/companies/hashtags/enrich', 'HashtagEnrich'],
 	},
 	signal: {
 		searchIntent: ['POST', '/intent/search', 'IntentSearch'],
 		searchNews: ['POST', '/news/search', 'NewsSearch'],
 		searchScoops: ['POST', '/scoops/search', 'ScoopSearch'],
+		enrichIntent: ['POST', '/intent/enrich', 'IntentEnrich'],
+		enrichNews: ['POST', '/news/enrich', 'NewsEnrich'],
+		enrichScoops: ['POST', '/scoops/enrich', 'ScoopEnrich'],
 	},
 	usage: {
 		get: ['GET', '/users/usage', null],
@@ -79,6 +90,185 @@ describe('operation routing', () => {
 			});
 		}
 	}
+});
+
+describe('dynamic dropdown attributes', () => {
+	test('company.enrichOrgChart merges selected departments into attributes as a CSV string', async () => {
+		server.reset();
+		server.enqueue(searchPage({ records: records(1) }));
+
+		await runOperation({
+			baseURL: server.url,
+			params: {
+				resource: 'company',
+				operation: 'enrichOrgChart',
+				attributes: '{"companyId":"344589814"}',
+				department: ['dept-1', 'dept-2'],
+				returnAll: false,
+				limit: 10,
+			},
+		});
+
+		const [request] = server.requests;
+		assert.equal(request.body?.data?.attributes?.department, 'dept-1,dept-2');
+	});
+
+	test('company.enrichOrgChart keeps a JSON-blob department when the dropdown is left empty', async () => {
+		server.reset();
+		server.enqueue(searchPage({ records: records(1) }));
+
+		await runOperation({
+			baseURL: server.url,
+			params: {
+				resource: 'company',
+				operation: 'enrichOrgChart',
+				attributes: '{"companyId":"344589814","department":"legacy-dept"}',
+				department: [],
+				returnAll: false,
+				limit: 10,
+			},
+		});
+
+		const [request] = server.requests;
+		assert.equal(request.body?.data?.attributes?.department, 'legacy-dept');
+	});
+
+	test('signal.searchIntent merges selected topics into attributes as an array', async () => {
+		server.reset();
+		server.enqueue(searchPage({ records: records(1) }));
+
+		await runOperation({
+			baseURL: server.url,
+			params: {
+				resource: 'signal',
+				operation: 'searchIntent',
+				attributes: '{"signalScoreMin":80}',
+				topics: ['topic-1', 'topic-2'],
+				returnAll: false,
+				limit: 10,
+			},
+		});
+
+		const [request] = server.requests;
+		assert.deepEqual(request.body?.data?.attributes?.topics, ['topic-1', 'topic-2']);
+	});
+
+	test('signal.enrichIntent merges selected topics into attributes as an array', async () => {
+		server.reset();
+		server.enqueue(searchPage({ records: records(1) }));
+
+		await runOperation({
+			baseURL: server.url,
+			params: {
+				resource: 'signal',
+				operation: 'enrichIntent',
+				attributes: '{"companyId":"344589814"}',
+				topics: ['topic-1'],
+				returnAll: false,
+				limit: 10,
+			},
+		});
+
+		const [request] = server.requests;
+		assert.deepEqual(request.body?.data?.attributes?.topics, ['topic-1']);
+	});
+
+	test('signal.searchIntent keeps a JSON-blob topics value when the dropdown is left empty', async () => {
+		server.reset();
+		server.enqueue(searchPage({ records: records(1) }));
+
+		await runOperation({
+			baseURL: server.url,
+			params: {
+				resource: 'signal',
+				operation: 'searchIntent',
+				attributes: '{"topics":["legacy-topic"]}',
+				topics: [],
+				returnAll: false,
+				limit: 10,
+			},
+		});
+
+		const [request] = server.requests;
+		assert.deepEqual(request.body?.data?.attributes?.topics, ['legacy-topic']);
+	});
+});
+
+describe('lookup routing', () => {
+	test('lookup.get → GET /lookup/{fieldName}', async () => {
+		server.reset();
+		server.enqueue(searchPage({ records: records(1) }));
+
+		await runOperation({
+			baseURL: server.url,
+			params: { resource: 'lookup', operation: 'get', fieldName: 'industries' },
+		});
+
+		const [request] = server.requests;
+		assert.equal(request.method, 'GET');
+		assert.equal(request.path, '/lookup/industries');
+		assert.equal(request.body, undefined, 'GET operation should send no body');
+	});
+
+	test('lookup.get sends technology/hashtag filters as query params', async () => {
+		server.reset();
+		server.enqueue(searchPage({ records: records(1) }));
+
+		await runOperation({
+			baseURL: server.url,
+			params: {
+				resource: 'lookup',
+				operation: 'get',
+				fieldName: 'tech-vendors',
+				filterVendor: 'microsoft corporation',
+			},
+		});
+
+		const [request] = server.requests;
+		assert.equal(request.query.get('filter[vendor]'), 'microsoft corporation');
+	});
+
+	test('lookup.getSearchFields → GET /lookup/search', async () => {
+		server.reset();
+		server.enqueue(searchPage({ records: records(1) }));
+
+		await runOperation({
+			baseURL: server.url,
+			params: {
+				resource: 'lookup',
+				operation: 'getSearchFields',
+				filterEntity: 'contact',
+				filterFieldType: 'output',
+			},
+		});
+
+		const [request] = server.requests;
+		assert.equal(request.method, 'GET');
+		assert.equal(request.path, '/lookup/search');
+		assert.equal(request.query.get('filter[entity]'), 'contact');
+		assert.equal(request.query.get('filter[fieldType]'), 'output');
+	});
+
+	test('lookup.getEnrichFields → GET /lookup/enrich', async () => {
+		server.reset();
+		server.enqueue(searchPage({ records: records(1) }));
+
+		await runOperation({
+			baseURL: server.url,
+			params: {
+				resource: 'lookup',
+				operation: 'getEnrichFields',
+				filterEntity: 'orgChart',
+				filterFieldType: 'input',
+			},
+		});
+
+		const [request] = server.requests;
+		assert.equal(request.method, 'GET');
+		assert.equal(request.path, '/lookup/enrich');
+		assert.equal(request.query.get('filter[entity]'), 'orgChart');
+		assert.equal(request.query.get('filter[fieldType]'), 'input');
+	});
 });
 
 describe('request defaults', () => {

@@ -148,9 +148,21 @@ if (!token) {
 	process.exit(1);
 }
 
-/** Authenticated request against the GTM data API. */
+/**
+ * Authenticated request against the GTM data API.
+ *
+ * `path` is built by call sites as a plain template string with literal
+ * `page[size]`/`filter[entity]`-style brackets — readable, but not a valid URL:
+ * the gateway's servlet container rejects unencoded `[`/`]` in the query string
+ * with a bare Tomcat 400 page, no ZoomInfo error body at all. The node itself
+ * never hits this because its declarative `qs` object is serialized by axios,
+ * which percent-encodes brackets automatically. Encoding them here keeps every
+ * call site's readable literal syntax while sending a URL the gateway accepts.
+ */
 async function api(method, path, body) {
-	const response = await fetch(`${BASE_URL}${path}`, {
+	const [pathname, query] = path.split('?');
+	const encodedPath = query ? `${pathname}?${query.replace(/\[/g, '%5B').replace(/\]/g, '%5D')}` : pathname;
+	const response = await fetch(`${BASE_URL}${encodedPath}`, {
 		method,
 		headers: {
 			Authorization: `Bearer ${token}`,
@@ -181,7 +193,76 @@ await step('GET /users/usage (consumes no credits)', async () => {
 	return `${status}, keys: ${Object.keys(body ?? {}).join(',')}`;
 });
 
-// ── 3. Every routed endpoint ────────────────────────────────────────────────
+// ── 3. Lookup (consumes no credits) ─────────────────────────────────────────
+// Run before the routed endpoints below so the account-specific IDs it
+// captures (intent topics, departments) are ready in time to drive the
+// searches/enrichments that need them — those two fields are a closed,
+// per-account vocabulary, not free text, so a hardcoded sample value can 400.
+console.log('\nLookup (consumes no credits)');
+
+let firstIntentTopicId;
+let firstDepartmentId;
+
+await step('lookup.get → GET /lookup/industries', async () => {
+	const { status, ok, body, raw } = await api('GET', '/lookup/industries');
+	assert(ok, `${status}: ${raw.slice(0, 300)}`);
+	const count = Array.isArray(body?.data) ? body.data.length : 0;
+	assert(count > 0, 'expected at least one industry value');
+	return `${status}, ${count} value(s)`;
+});
+
+await step(
+	'lookup.get → GET /lookup/intent-topics (captures a topic ID for intent search/enrich below)',
+	async () => {
+		const { status, ok, body, raw } = await api('GET', '/lookup/intent-topics');
+		assert(ok, `${status}: ${raw.slice(0, 300)}`);
+		const first = Array.isArray(body?.data) ? body.data[0] : undefined;
+		firstIntentTopicId = first?.id;
+		return `${status}, first topic=${JSON.stringify(first)?.slice(0, 120)}`;
+	},
+);
+
+await step(
+	'lookup.get → GET /lookup/departments (captures a department ID for enrichOrgChart below)',
+	async () => {
+		const { status, ok, body, raw } = await api('GET', '/lookup/departments');
+		assert(ok, `${status}: ${raw.slice(0, 300)}`);
+		const first = Array.isArray(body?.data) ? body.data[0] : undefined;
+		firstDepartmentId = first?.id;
+		return `${status}, first department=${JSON.stringify(first)?.slice(0, 120)}`;
+	},
+);
+
+await step('lookup.get → GET /lookup/tech-vendors applies filter[vendor]', async () => {
+	const { status, ok, raw } = await api(
+		'GET',
+		'/lookup/tech-vendors?filter[vendor]=microsoft corporation',
+	);
+	assert(ok, `${status}: ${raw.slice(0, 300)}`);
+	return `${status}`;
+});
+
+await step('lookup.getSearchFields → GET /lookup/search', async () => {
+	const { status, ok, body, raw } = await api(
+		'GET',
+		'/lookup/search?filter[entity]=contact&filter[fieldType]=output',
+	);
+	assert(ok, `${status}: ${raw.slice(0, 300)}`);
+	const count = Array.isArray(body?.data) ? body.data.length : 0;
+	return `${status}, ${count} field(s)`;
+});
+
+await step('lookup.getEnrichFields → GET /lookup/enrich', async () => {
+	const { status, ok, body, raw } = await api(
+		'GET',
+		'/lookup/enrich?filter[entity]=company&filter[fieldType]=input',
+	);
+	assert(ok, `${status}: ${raw.slice(0, 300)}`);
+	const count = Array.isArray(body?.data) ? body.data.length : 0;
+	return `${status}, ${count} field(s)`;
+});
+
+// ── 4. Every routed endpoint ────────────────────────────────────────────────
 // Confirms each URL exists and each data.type is accepted. A 404 with code
 // ZI9998 and "No static resource" means the *verb* is wrong, not the path.
 console.log('\nRouting (one record each)');
@@ -189,15 +270,8 @@ console.log('\nRouting (one record each)');
 const OPERATIONS = [
 	['contact.search', 'POST', '/contacts/search', 'ContactSearch', { companyName: 'ZoomInfo' }],
 	['company.search', 'POST', '/companies/search', 'CompanySearch', { companyName: 'ZoomInfo' }],
-	[
-		'signal.searchIntent',
-		'POST',
-		'/intent/search',
-		'IntentSearch',
-		{ topics: ['sales intelligence'] },
-	],
 	['signal.searchScoops', 'POST', '/scoops/search', 'ScoopSearch', { companyName: 'ZoomInfo' }],
-	['signal.searchNews', 'POST', '/news/search', 'NewsSearch', { companyName: 'ZoomInfo' }],
+	['signal.searchNews', 'POST', '/news/search', 'NewsSearch', { categories: ['FUNDING'] }],
 ];
 
 /** meta.page objects seen, so the pagination expression can be checked below. */
@@ -217,7 +291,142 @@ for (const [label, method, path, type, attributes] of OPERATIONS) {
 	});
 }
 
-// ── 4. The pagination contract ──────────────────────────────────────────────
+await step('signal.searchIntent → POST /intent/search', async () => {
+	if (!firstIntentTopicId) {
+		return 'skipped — no topic ID captured from /lookup/intent-topics';
+	}
+	const { status, ok, body, raw } = await api(
+		'POST',
+		'/intent/search?page[size]=1&page[number]=1',
+		{ data: { type: 'IntentSearch', attributes: { topics: [firstIntentTopicId] } } },
+	);
+	assert(ok, `${status}: ${raw.slice(0, 400)}`);
+
+	if (body?.meta?.page) pageMetas.push({ label: 'signal.searchIntent', page: body.meta.page });
+
+	const count = Array.isArray(body?.data) ? body.data.length : body?.data ? 1 : 0;
+	return `${status}, ${count} record(s), meta.page=${JSON.stringify(body?.meta?.page ?? null)}`;
+});
+
+// ── 5. New Enrich endpoints (consumes credits — one record each) ───────────
+console.log('\nEnrich (consumes credits, one record each)');
+
+// ZoomInfo's own company ID — same one used in the node's Attributes hints.
+const ZOOMINFO_COMPANY_ID = '344589814';
+
+await step('company.enrich → POST /companies/enrich', async () => {
+	const { status, ok, body, raw } = await api('POST', '/companies/enrich', {
+		data: {
+			type: 'CompanyEnrich',
+			attributes: {
+				matchCompanyInput: [{ companyName: 'ZoomInfo' }],
+				outputFields: ['id', 'name', 'website'],
+			},
+		},
+	});
+	assert(ok, `${status}: ${raw.slice(0, 400)}`);
+	const count = Array.isArray(body?.data) ? body.data.length : body?.data ? 1 : 0;
+	return `${status}, ${count} record(s)`;
+});
+
+await step('contact.enrich → POST /contacts/enrich', async () => {
+	const { status, ok, body, raw } = await api('POST', '/contacts/enrich', {
+		data: {
+			type: 'ContactEnrich',
+			attributes: {
+				matchPersonInput: [{ firstName: 'Jane', lastName: 'Doe', companyName: 'ZoomInfo' }],
+				outputFields: ['id', 'email', 'jobTitle'],
+			},
+		},
+	});
+	assert(ok, `${status}: ${raw.slice(0, 400)}`);
+	const count = Array.isArray(body?.data) ? body.data.length : body?.data ? 1 : 0;
+	return `${status}, ${count} record(s)`;
+});
+
+await step('company.enrichOrgChart → POST /companies/org-chart/enrich', async () => {
+	if (!firstDepartmentId) {
+		return 'skipped — no department ID captured from /lookup/departments';
+	}
+	const { status, ok, body, raw } = await api(
+		'POST',
+		'/companies/org-chart/enrich?page[size]=1&page[number]=1',
+		{
+			data: {
+				type: 'OrgChartEnrich',
+				attributes: { companyId: ZOOMINFO_COMPANY_ID, department: firstDepartmentId },
+			},
+		},
+	);
+	assert(ok, `${status}: ${raw.slice(0, 400)}`);
+	const count = Array.isArray(body?.data) ? body.data.length : body?.data ? 1 : 0;
+	return `${status}, ${count} record(s)`;
+});
+
+await step(
+	'company.enrichCorporateHierarchy → POST /companies/corporate-hierarchy/enrich',
+	async () => {
+		const { status, ok, raw } = await api('POST', '/companies/corporate-hierarchy/enrich', {
+			data: {
+				type: 'CorporateHierarchyEnrich',
+				attributes: {
+					matchCompanyInput: [{ companyId: ZOOMINFO_COMPANY_ID }],
+					outputFields: ['familyTree'],
+				},
+			},
+		});
+		assert(ok, `${status}: ${raw.slice(0, 400)}`);
+		return `${status}`;
+	},
+);
+
+await step('company.enrichTechnologies → POST /companies/technologies/enrich', async () => {
+	const { status, ok, raw } = await api('POST', '/companies/technologies/enrich', {
+		data: { type: 'TechnologyEnrich', attributes: { companyId: ZOOMINFO_COMPANY_ID } },
+	});
+	assert(ok, `${status}: ${raw.slice(0, 400)}`);
+	return `${status}`;
+});
+
+await step('company.enrichHashtags → POST /companies/hashtags/enrich', async () => {
+	const { status, ok, raw } = await api('POST', '/companies/hashtags/enrich', {
+		data: { type: 'HashtagEnrich', attributes: { companyId: ZOOMINFO_COMPANY_ID } },
+	});
+	assert(ok, `${status}: ${raw.slice(0, 400)}`);
+	return `${status}`;
+});
+
+await step('signal.enrichNews → POST /news/enrich', async () => {
+	const { status, ok, raw } = await api('POST', '/news/enrich?page[size]=1&page[number]=1', {
+		data: { type: 'NewsEnrich', attributes: { companyId: ZOOMINFO_COMPANY_ID } },
+	});
+	assert(ok, `${status}: ${raw.slice(0, 400)}`);
+	return `${status}`;
+});
+
+await step('signal.enrichScoops → POST /scoops/enrich', async () => {
+	const { status, ok, raw } = await api('POST', '/scoops/enrich?page[size]=1&page[number]=1', {
+		data: { type: 'ScoopEnrich', attributes: { companyId: ZOOMINFO_COMPANY_ID } },
+	});
+	assert(ok, `${status}: ${raw.slice(0, 400)}`);
+	return `${status}`;
+});
+
+await step('signal.enrichIntent → POST /intent/enrich', async () => {
+	if (!firstIntentTopicId) {
+		return 'skipped — no topic ID captured from /lookup/intent-topics';
+	}
+	const { status, ok, raw } = await api('POST', '/intent/enrich?page[size]=1&page[number]=1', {
+		data: {
+			type: 'IntentEnrich',
+			attributes: { companyId: ZOOMINFO_COMPANY_ID, topics: [firstIntentTopicId] },
+		},
+	});
+	assert(ok, `${status}: ${raw.slice(0, 400)}`);
+	return `${status}`;
+});
+
+// ── 6. The pagination contract ──────────────────────────────────────────────
 // ZoomInfo's schema documents `meta.page.total` as a *page* count and
 // `meta.totalResults` as the *record* count, which is what
 // paginationProperties() relies on. These checks confirm the documented contract
