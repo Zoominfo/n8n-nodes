@@ -59,6 +59,11 @@ const EXPECTED = {
 		searchNews: ['POST', '/news/search', 'NewsSearch'],
 		searchScoops: ['POST', '/scoops/search', 'ScoopSearch'],
 	},
+	lookup: {
+		get: ['GET', '=/lookup/{{$parameter.fieldName}}', null],
+		getSearchFields: ['GET', '/lookup/search', null],
+		getEnrichFields: ['GET', '/lookup/enrich', null],
+	},
 	usage: {
 		get: ['GET', '/users/usage', null],
 	},
