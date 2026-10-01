@@ -88,7 +88,14 @@ describe('company search', () => {
 });
 
 describe('resources without sort', () => {
-	for (const operation of ['searchIntent', 'searchNews', 'searchScoops']) {
+	for (const operation of [
+		'searchIntent',
+		'searchNews',
+		'searchScoops',
+		'enrichIntent',
+		'enrichNews',
+		'enrichScoops',
+	]) {
 		test(`signal.${operation} sends no sort parameter`, async () => {
 			server.reset();
 			server.enqueue(searchPage({ records: records(1) }));

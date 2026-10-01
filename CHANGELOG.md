@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+Completes the Data API surface. Same base path and credential as everything else in
+this node — no new plumbing.
+
+- New **Lookup** resource: Get Data (`GET /lookup/{fieldName}`, e.g. `industries`,
+  `tech-vendors`, `intent-topics`), Get Search Fields (`GET /lookup/search`), and Get
+  Enrich Fields (`GET /lookup/enrich`).
+- **Company**: Enrich Org Chart, Enrich Corporate Hierarchy, Enrich Technologies, and
+  Enrich Hashtags.
+- **Signal**: Enrich Intent, Enrich News, and Enrich Scoops, alongside the existing
+  Search operations.
+- `Company → Enrich Org Chart`'s Department and `Signal → Search/Enrich Intent`'s
+  Topics are now dedicated dropdowns populated from ZoomInfo's own lookup data,
+  instead of free-text values inside the Attributes JSON. Both fields are a closed,
+  account-specific vocabulary, so a hand-typed value could 400; picking from the
+  list rules that out. Values already set inside Attributes keep working if the
+  new field is left empty.
+
 ## 1.0.1
 
 Aligns the credential with n8n's [Managed OAuth
