@@ -77,18 +77,23 @@ DevPortal, not here.
 
 ## Operations
 
-Base URL: `https://api.zoominfo.com/gtm/data/v1`
+Base URLs: `https://api.zoominfo.com/gtm/data/v1` for the Data API, and
+`https://api.zoominfo.com/gtm/copilot/v1` for the Copilot operations marked ✱ below.
+Both use the same credential.
 
 | Resource | Operation | Endpoint | Body `type` |
 | --- | --- | --- | --- |
 | Contact | Search | `POST /contacts/search` | `ContactSearch` |
 | Contact | Enrich | `POST /contacts/enrich` | `ContactEnrich` |
+| Contact | Get Lookalikes ✱ | `GET /contacts/lookalikes` | — |
+| Contact | Get Recommendations ✱ | `GET /contacts/recommendations` | — |
 | Company | Search | `POST /companies/search` | `CompanySearch` |
 | Company | Enrich | `POST /companies/enrich` | `CompanyEnrich` |
 | Company | Enrich Org Chart | `POST /companies/org-chart/enrich` | `OrgChartEnrich` |
 | Company | Enrich Corporate Hierarchy | `POST /companies/corporate-hierarchy/enrich` | `CorporateHierarchyEnrich` |
 | Company | Enrich Technologies | `POST /companies/technologies/enrich` | `TechnologyEnrich` |
 | Company | Enrich Hashtags | `POST /companies/hashtags/enrich` | `HashtagEnrich` |
+| Company | Get Lookalikes ✱ | `GET /companies/lookalikes` | — |
 | Signal | Search Intent | `POST /intent/search` | `IntentSearch` |
 | Signal | Search Scoops | `POST /scoops/search` | `ScoopSearch` |
 | Signal | Search News | `POST /news/search` | `NewsSearch` |
@@ -112,6 +117,35 @@ topics and org chart departments — are also surfaced directly as dropdowns on
 from the list is usually simpler than a separate Lookup call.
 `Lookup → Get Search Fields` and `Get Enrich Fields` return the input/output field
 names a given entity's Search or Enrich endpoint accepts.
+
+### Copilot operations
+
+The ✱ operations are plain GETs: their inputs are individual fields rather than an
+Attributes JSON object, and they return the response's `data`, one item per record.
+
+- **Contact → Get Lookalikes** takes a *Reference Person ID* and an optional *Target
+  Company ID* (leave it unset to search across all companies).
+- **Contact → Get Recommendations** takes a *Company ID* and a *Use Case*: Prospecting,
+  Deal Acceleration, or Renewal and Growth.
+- **Company → Get Lookalikes** takes a *Company ID* or a *Company Name* (one of the two
+  is required; the node fails early with a clear message rather than letting the API
+  answer 422). The *Filters* collection restricts results to companies with the same
+  revenue range, country, industry or employee range as the reference. Only filters you
+  add are sent.
+
+The two lookalike operations and Get Recommendations take a **Limit** (`page[size]`,
+1–100). They have no page number to walk, so there is no Return All.
+
+These endpoints are gated separately from the Data API, so a 403 usually means the app
+or user lacks the scope or role, not that the node is misconfigured:
+
+| Operations | Scope | Account role |
+| --- | --- | --- |
+| Contact/Company Lookalikes, Contact Recommendations | `api:recommendations:read` | `fea:zia` or `fea:api` |
+
+Because the credential sends no `scope` (see [Scopes](#scopes)), enable this scope on the
+DevPortal app before connecting — an app connected before they were added needs to be
+reconnected to pick them up.
 
 ### Attributes
 
@@ -359,7 +393,8 @@ ZOOMINFO_CLIENT_ID=... ZOOMINFO_CLIENT_SECRET=... npm run test:live
 The same two keys can go in a `.env` file at the repo root instead (gitignored). The
 script skips cleanly when they are absent, so it is safe to run unconditionally. It
 performs a real token exchange, calls `GET /users/usage` (no credits), requests a
-single record from each search endpoint, and checks that `meta.page.total` counts
+single record from each search endpoint and each Copilot endpoint (a 403 there means
+the app lacks a scope or role, which the output says), and checks that `meta.page.total` counts
 pages rather than records. Secrets and the access token are redacted from all output.
 
 Run it before a release; it is deliberately excluded from CI.
@@ -373,7 +408,7 @@ machine, and `prepublishOnly` blocks one.
 ## Roadmap
 
 - Typed request fields for the most common attributes, replacing the JSON pass-through
-- Remaining API families: Audience (Studio) API, Agents API, Context (Copilot) API
+- Remaining API families: Audience (Studio) API, Agents API, and the rest of the Copilot API (lookalikes and recommendations are covered)
 - Surface `detail` from platform-validation errors in the headline message, which needs
   `ignoreHttpStatusErrors` plus hand-rolled error mapping (see *Error responses*)
 

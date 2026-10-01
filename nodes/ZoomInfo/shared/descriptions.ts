@@ -151,3 +151,33 @@ export function sortProperties(
 		},
 	];
 }
+
+/**
+ * Page size alone, for endpoints that accept `page[size]` but have no
+ * `page[number]` or `meta.page` to walk — so no "Return All". The maximum is 100.
+ * The default is 50 (n8n's lint rule for Limit) rather than the API's 25; it is
+ * always sent explicitly, so the difference never reaches the wire unannounced.
+ */
+export function limitProperty(show: Show): INodeProperties {
+	return {
+		displayName: 'Limit',
+		name: 'limit',
+		type: 'number',
+		default: 50,
+		description: 'Max number of results to return',
+		typeOptions: {
+			minValue: 1,
+			maxValue: 100,
+		},
+		displayOptions: { show },
+		routing: {
+			send: {
+				type: 'query',
+				property: 'page[size]',
+			},
+			output: {
+				maxResults: '={{ $value }}',
+			},
+		},
+	};
+}

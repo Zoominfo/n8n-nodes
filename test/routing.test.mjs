@@ -271,6 +271,128 @@ describe('lookup routing', () => {
 	});
 });
 
+describe('copilot routing', () => {
+	/** Queues one JSON:API list response and runs an operation against the mock. */
+	async function run(params, response = searchPage({ records: records(1) })) {
+		server.reset();
+		server.enqueue(response);
+		const result = await runOperation({ baseURL: server.url, params });
+		return { ...result, request: server.requests[0] };
+	}
+
+	test('contact.getLookalikes → GET /copilot/v1/contacts/lookalikes', async () => {
+		const { request } = await run({
+			resource: 'contact',
+			operation: 'getLookalikes',
+			referencePersonId: '123456',
+			options: { targetCompanyId: '344589814' },
+			limit: 10,
+		});
+
+		assert.equal(request.method, 'GET');
+		assert.equal(request.path, '/copilot/v1/contacts/lookalikes');
+		assert.equal(request.query.get('filter[referencePersonId]'), '123456');
+		assert.equal(request.query.get('filter[targetCompanyId]'), '344589814');
+		assert.equal(request.query.get('page[size]'), '10');
+		assert.equal(request.body, undefined, 'GET operation should send no body');
+	});
+
+	test('contact.getLookalikes omits Target Company ID when it is not set', async () => {
+		const { request } = await run({
+			resource: 'contact',
+			operation: 'getLookalikes',
+			referencePersonId: '123456',
+			options: {},
+			limit: 25,
+		});
+
+		assert.equal(request.query.has('filter[targetCompanyId]'), false);
+	});
+
+	test('contact.getRecommendations → GET /copilot/v1/contacts/recommendations', async () => {
+		const { request } = await run({
+			resource: 'contact',
+			operation: 'getRecommendations',
+			companyId: '344589814',
+			useCaseType: 'DEAL_ACCELERATION',
+			limit: 5,
+		});
+
+		assert.equal(request.method, 'GET');
+		assert.equal(request.path, '/copilot/v1/contacts/recommendations');
+		assert.equal(request.query.get('filter[ziCompanyId]'), '344589814');
+		assert.equal(request.query.get('filter[useCaseType]'), 'DEAL_ACCELERATION');
+		assert.equal(request.query.get('page[size]'), '5');
+	});
+
+	test('company.getLookalikes sends the reference company and only the filters that were added', async () => {
+		const { request } = await run({
+			resource: 'company',
+			operation: 'getLookalikes',
+			companyId: '344589814',
+			companyName: '',
+			filters: { sameIndustry: true, sameCountry: false },
+			limit: 20,
+		});
+
+		assert.equal(request.method, 'GET');
+		assert.equal(request.path, '/copilot/v1/companies/lookalikes');
+		assert.equal(request.query.get('filter[companyId]'), '344589814');
+		assert.equal(request.query.has('filter[companyName]'), false, 'blank name must not be sent');
+		assert.equal(request.query.get('filter[sameIndustry]'), 'true');
+		assert.equal(request.query.get('filter[sameCountry]'), 'false');
+		assert.equal(request.query.has('filter[sameRevenueRange]'), false);
+		assert.equal(request.query.has('filter[sameEmployeeRange]'), false);
+		assert.equal(request.query.get('page[size]'), '20');
+	});
+
+	test('company.getLookalikes accepts a Company Name alone', async () => {
+		const { request } = await run({
+			resource: 'company',
+			operation: 'getLookalikes',
+			companyId: '',
+			companyName: 'ZoomInfo',
+			filters: {},
+			limit: 20,
+		});
+
+		assert.equal(request.query.get('filter[companyName]'), 'ZoomInfo');
+		assert.equal(request.query.has('filter[companyId]'), false);
+	});
+
+	test('company.getLookalikes with neither ID nor name fails before any request is made', async () => {
+		server.reset();
+		await assert.rejects(
+			runOperation({
+				baseURL: server.url,
+				params: {
+					resource: 'company',
+					operation: 'getLookalikes',
+					companyId: '  ',
+					companyName: '',
+					filters: {},
+					limit: 20,
+				},
+			}),
+			/Company ID or Company Name is required/,
+		);
+		assert.equal(server.requests.length, 0);
+	});
+
+	test('copilot operations still authenticate with the PKCE credential', async () => {
+		const { credentialTypes, request } = await run({
+			resource: 'contact',
+			operation: 'getRecommendations',
+			companyId: '344589814',
+			useCaseType: 'PROSPECTING',
+			limit: 5,
+		});
+
+		assert.equal(request.headers.authorization, 'Bearer test-token');
+		assert.deepEqual([...new Set(credentialTypes)], ['zoomInfoPkceOAuth2Api']);
+	});
+});
+
 describe('request defaults', () => {
 	test('sends the JSON:API media type on both Accept and Content-Type', async () => {
 		server.reset();
