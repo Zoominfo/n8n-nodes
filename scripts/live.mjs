@@ -40,6 +40,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const TOKEN_URL = 'https://api.zoominfo.com/gtm/oauth/v1/token';
 const BASE_URL = 'https://api.zoominfo.com/gtm/data/v1';
+const COPILOT_BASE_URL = 'https://api.zoominfo.com/gtm/copilot/v1';
 
 /** Loads .env without a dependency. Only KEY=value lines, no interpolation. */
 function loadDotEnv() {
@@ -159,10 +160,10 @@ if (!token) {
  * which percent-encodes brackets automatically. Encoding them here keeps every
  * call site's readable literal syntax while sending a URL the gateway accepts.
  */
-async function api(method, path, body) {
+async function api(method, path, body, baseUrl = BASE_URL) {
 	const [pathname, query] = path.split('?');
 	const encodedPath = query ? `${pathname}?${query.replace(/\[/g, '%5B').replace(/\]/g, '%5D')}` : pathname;
-	const response = await fetch(`${BASE_URL}${encodedPath}`, {
+	const response = await fetch(`${baseUrl}${encodedPath}`, {
 		method,
 		headers: {
 			Authorization: `Bearer ${token}`,
@@ -426,7 +427,68 @@ await step('signal.enrichIntent → POST /intent/enrich', async () => {
 	return `${status}`;
 });
 
-// ── 6. The pagination contract ──────────────────────────────────────────────
+// ── 6. Copilot endpoints (GET, /gtm/copilot/v1) ─────────────────────────────
+// Same host and token as the data API, but each of these needs a scope and an
+// account feature the DevPortal app may not hold, so a 403 here is a setup
+// finding rather than a node bug — the message says so. A 404 with "No static
+// resource" means the path or verb is wrong; any other 404 is the API saying
+// there is no such record, which is a legitimate answer for some of these.
+console.log('\nCopilot (one record each)');
+
+const copilot = (path) => api('GET', path, undefined, COPILOT_BASE_URL);
+
+function describeFailure({ status, raw }, scope) {
+	const hint = status === 403 ? ` — the app needs scope ${scope} and the matching account role` : '';
+	return `${status}${hint}: ${raw.slice(0, 300)}`;
+}
+
+const SAMPLE_COMPANY_ID = '344589814';
+let samplePersonId;
+
+await step('contact.search → captures a person ID for contact lookalikes below', async () => {
+	const { status, ok, body, raw } = await api(
+		'POST',
+		'/contacts/search?page[size]=1',
+		{ data: { type: 'ContactSearch', attributes: { companyName: 'ZoomInfo' } } },
+	);
+	assert(ok, `${status}: ${raw.slice(0, 300)}`);
+	samplePersonId = body?.data?.[0]?.id;
+	assert(samplePersonId, 'search returned no contact to use as a reference');
+	return `person ID ${samplePersonId}`;
+});
+
+await step('contact.getLookalikes → GET /contacts/lookalikes', async () => {
+	if (!samplePersonId) return 'skipped — no person ID captured';
+	const result = await copilot(
+		`/contacts/lookalikes?filter[referencePersonId]=${samplePersonId}&page[size]=1`,
+	);
+	assert(result.ok, describeFailure(result, 'api:recommendations:read'));
+	return `${result.status}, ${result.body?.data?.length ?? 0} record(s)`;
+});
+
+await step('contact.getRecommendations → GET /contacts/recommendations', async () => {
+	const result = await copilot(
+		`/contacts/recommendations?filter[ziCompanyId]=${SAMPLE_COMPANY_ID}&filter[useCaseType]=PROSPECTING&page[size]=1`,
+	);
+	assert(result.ok, describeFailure(result, 'api:recommendations:read'));
+	return `${result.status}, ${result.body?.data?.length ?? 0} record(s)`;
+});
+
+await step('company.getLookalikes → GET /companies/lookalikes (by ID, with a filter)', async () => {
+	const result = await copilot(
+		`/companies/lookalikes?filter[companyId]=${SAMPLE_COMPANY_ID}&filter[sameIndustry]=true&page[size]=1`,
+	);
+	assert(result.ok, describeFailure(result, 'api:recommendations:read'));
+	return `${result.status}, ${result.body?.data?.length ?? 0} record(s)`;
+});
+
+await step('company.getLookalikes → GET /companies/lookalikes (by name)', async () => {
+	const result = await copilot('/companies/lookalikes?filter[companyName]=ZoomInfo&page[size]=1');
+	assert(result.ok, describeFailure(result, 'api:recommendations:read'));
+	return `${result.status}, ${result.body?.data?.length ?? 0} record(s)`;
+});
+
+// ── 7. The pagination contract ──────────────────────────────────────────────
 // ZoomInfo's schema documents `meta.page.total` as a *page* count and
 // `meta.totalResults` as the *record* count, which is what
 // paginationProperties() relies on. These checks confirm the documented contract

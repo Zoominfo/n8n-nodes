@@ -19,6 +19,20 @@ this node — no new plumbing.
   list rules that out. Values already set inside Attributes keep working if the
   new field is left empty.
 
+### Copilot API
+
+Adds the first Copilot (`/gtm/copilot/v1`) endpoints. Same host and credential, but a
+different path prefix, so these operations set `baseURL` on their own request and the
+Data API operations are unchanged. All are GETs with individual fields rather than an
+Attributes JSON object.
+
+- **Contact**: Get Lookalikes and Get Recommendations.
+- **Company**: Get Lookalikes (by Company ID or Name, with same revenue range / country
+  / industry / employee range filters).
+- These need a scope the DevPortal app may not hold yet (`api:recommendations:read`)
+  and an account role to match; see the README's *Copilot operations*. Apps connected before the scope was enabled must be
+  reconnected.
+
 ## 1.0.1
 
 Aligns the credential with n8n's [Managed OAuth
