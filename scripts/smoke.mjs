@@ -49,10 +49,13 @@ const EXPECTED = {
 	contact: {
 		search: ['POST', '/contacts/search', 'ContactSearch'],
 		enrich: ['POST', '/contacts/enrich', 'ContactEnrich'],
+		getLookalikes: ['GET', '/contacts/lookalikes', null],
+		getRecommendations: ['GET', '/contacts/recommendations', null],
 	},
 	company: {
 		search: ['POST', '/companies/search', 'CompanySearch'],
 		enrich: ['POST', '/companies/enrich', 'CompanyEnrich'],
+		getLookalikes: ['GET', '/companies/lookalikes', null],
 	},
 	signal: {
 		searchIntent: ['POST', '/intent/search', 'IntentSearch'],
@@ -160,6 +163,30 @@ for (const [resource, operations] of Object.entries(EXPECTED)) {
 		});
 	}
 }
+
+console.log('\nCopilot base URL');
+const COPILOT_BASE = 'https://api.zoominfo.com/gtm/copilot/v1';
+const COPILOT_OPS = [
+	['contact', 'getLookalikes'],
+	['contact', 'getRecommendations'],
+	['company', 'getLookalikes'],
+];
+for (const [resource, operation] of COPILOT_OPS) {
+	check(`${resource}.${operation} overrides baseURL to the copilot API`, () => {
+		const opProp = description.properties.find(
+			(p) => p.name === 'operation' && p.displayOptions?.show?.resource?.includes(resource),
+		);
+		const request = opProp.options.find((o) => o.value === operation).routing.request;
+		assert(request.baseURL === COPILOT_BASE, `baseURL is ${request.baseURL}`);
+	});
+}
+check('data-API operations keep the node-wide base URL', () => {
+	const opProp = description.properties.find(
+		(p) => p.name === 'operation' && p.displayOptions?.show?.resource?.includes('usage'),
+	);
+	const request = opProp.options[0].routing.request;
+	assert(request.baseURL === undefined, `unexpected override ${request.baseURL}`);
+});
 
 console.log('\nProperty visibility');
 for (const [resource, operations] of Object.entries(EXPECTED)) {

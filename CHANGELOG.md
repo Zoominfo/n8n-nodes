@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Copilot API
+
+Adds the first Copilot (`/gtm/copilot/v1`) endpoints. Same host and credential, but a
+different path prefix, so these operations set `baseURL` on their own request and the
+Data API operations are unchanged. All are GETs with individual fields rather than an
+Attributes JSON object.
+
+- **Contact**: Get Lookalikes and Get Recommendations.
+- **Company**: Get Lookalikes (by Company ID or Name, with same revenue range / country
+  / industry / employee range filters).
+- These need a scope the DevPortal app may not hold yet (`api:recommendations:read`)
+  and an account role to match; see the README's *Copilot operations*. Apps connected
+  before the scope was enabled must be reconnected.
+
+## 1.1.0
+
 Completes the Data API surface. Same base path and credential as everything else in
 this node — no new plumbing.
 

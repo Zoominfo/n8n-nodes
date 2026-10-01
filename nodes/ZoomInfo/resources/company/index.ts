@@ -1,10 +1,15 @@
 import type { INodeProperties } from 'n8n-workflow';
 import {
 	attributesProperty,
+	limitProperty,
 	paginationProperties,
 	sortProperties,
 } from '../../shared/descriptions';
-import { mergeMultiOptionsAttribute } from '../../shared/utils';
+import {
+	applyCompanyLookalikeReference,
+	copilotGet,
+	mergeMultiOptionsAttribute,
+} from '../../shared/utils';
 
 const showForCompany = { resource: ['company'] };
 const showForSearch = { resource: ['company'], operation: ['search'] };
@@ -16,6 +21,7 @@ const showForEnrichCorporateHierarchy = {
 };
 const showForEnrichTechnologies = { resource: ['company'], operation: ['enrichTechnologies'] };
 const showForEnrichHashtags = { resource: ['company'], operation: ['enrichHashtags'] };
+const showForLookalikes = { resource: ['company'], operation: ['getLookalikes'] };
 
 const unwrapData = {
 	postReceive: [
@@ -105,6 +111,16 @@ export const companyDescription: INodeProperties[] = [
 				},
 			},
 			{
+				name: 'Get Lookalikes',
+				value: 'getLookalikes',
+				action: 'Get company lookalikes',
+				description: 'Find companies similar to a reference company',
+				routing: {
+					request: copilotGet('/companies/lookalikes'),
+					output: unwrapData,
+				},
+			},
+			{
 				name: 'Search',
 				value: 'search',
 				action: 'Search companies',
@@ -175,4 +191,71 @@ export const companyDescription: INodeProperties[] = [
 	),
 	...paginationProperties(showForSearch),
 	...paginationProperties(showForEnrichOrgChart),
+	{
+		displayName: 'Company ID',
+		name: 'companyId',
+		type: 'string',
+		default: '',
+		description: 'The ZoomInfo ID of the reference company. Provide this or Company Name.',
+		displayOptions: { show: showForLookalikes },
+	},
+	{
+		displayName: 'Company Name',
+		name: 'companyName',
+		type: 'string',
+		default: '',
+		description:
+			'The name of the reference company. Provide this or Company ID; Company ID is the more precise of the two.',
+		displayOptions: { show: showForLookalikes },
+		routing: {
+			send: {
+				preSend: [applyCompanyLookalikeReference],
+			},
+		},
+	},
+	{
+		displayName: 'Filters',
+		name: 'filters',
+		type: 'collection',
+		placeholder: 'Add Filter',
+		default: {},
+		description:
+			'Restrict lookalikes to companies matching the reference company on these attributes. Only the filters you add are sent.',
+		displayOptions: { show: showForLookalikes },
+		options: [
+			{
+				displayName: 'Same Country',
+				name: 'sameCountry',
+				type: 'boolean',
+				default: true,
+				description: "Whether to only return companies in the reference company's country",
+				routing: { send: { type: 'query', property: 'filter[sameCountry]' } },
+			},
+			{
+				displayName: 'Same Employee Range',
+				name: 'sameEmployeeRange',
+				type: 'boolean',
+				default: true,
+				description: "Whether to only return companies in the reference company's employee range",
+				routing: { send: { type: 'query', property: 'filter[sameEmployeeRange]' } },
+			},
+			{
+				displayName: 'Same Industry',
+				name: 'sameIndustry',
+				type: 'boolean',
+				default: true,
+				description: "Whether to only return companies in the reference company's industry",
+				routing: { send: { type: 'query', property: 'filter[sameIndustry]' } },
+			},
+			{
+				displayName: 'Same Revenue Range',
+				name: 'sameRevenueRange',
+				type: 'boolean',
+				default: true,
+				description: "Whether to only return companies in the reference company's revenue range",
+				routing: { send: { type: 'query', property: 'filter[sameRevenueRange]' } },
+			},
+		],
+	},
+	limitProperty(showForLookalikes),
 ];

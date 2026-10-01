@@ -11,6 +11,48 @@ import { NodeOperationError, jsonParse } from 'n8n-workflow';
 export const BASE_URL = 'https://api.zoominfo.com/gtm/data/v1';
 
 /**
+ * The GTM copilot API (lookalikes, recommendations). Same host
+ * and credential as the data API, different path prefix, so these operations
+ * override `baseURL` on their own request rather than moving the node-wide
+ * default.
+ */
+export const COPILOT_BASE_URL = 'https://api.zoominfo.com/gtm/copilot/v1';
+
+/** `routing.request` for a copilot GET. `url` may be an `=` expression. */
+export function copilotGet(url: string) {
+	return { method: 'GET' as const, baseURL: COPILOT_BASE_URL, url };
+}
+
+/**
+ * Sets `filter[companyId]` / `filter[companyName]` for Company → Get
+ * Lookalikes, run as a `preSend`. The API wants one or the other and answers an
+ * unhelpful 422 when both are missing, so that case fails here with a pointed
+ * message instead. Blank values are dropped rather than sent as empty strings.
+ */
+export async function applyCompanyLookalikeReference(
+	this: IExecuteSingleFunctions,
+	requestOptions: IHttpRequestOptions,
+): Promise<IHttpRequestOptions> {
+	const companyId = String(this.getNodeParameter('companyId', '') ?? '').trim();
+	const companyName = String(this.getNodeParameter('companyName', '') ?? '').trim();
+
+	if (!companyId && !companyName) {
+		throw new NodeOperationError(this.getNode(), 'Company ID or Company Name is required', {
+			description: 'Provide the reference company to find lookalikes for.',
+		});
+	}
+
+	const qs = (requestOptions.qs ?? {}) as IDataObject;
+	const filter = (qs.filter ?? {}) as IDataObject;
+	if (companyId) filter.companyId = companyId;
+	if (companyName) filter.companyName = companyName;
+	qs.filter = filter;
+	requestOptions.qs = qs;
+
+	return requestOptions;
+}
+
+/**
  * Populates a `loadOptionsMethod` dropdown from `GET /lookup/{fieldName}`.
  *
  * Every lookup type returns the same JSON:API shape —

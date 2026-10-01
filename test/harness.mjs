@@ -112,6 +112,30 @@ export async function runOperation({ baseURL, params, input = [{ json: {} }] }) 
 		baseURL,
 	};
 
+	// Copilot operations override `baseURL` on their own request, which beats the
+	// default above, so they would bypass the mock and hit the real API. Point
+	// them at the mock too, keeping their path prefix (`/copilot/v1`) so tests can
+	// assert it. Rebuilt rather than mutated: the operation objects are shared
+	// module state, and a rewritten URL would no longer match on the next call.
+	const LIVE_ORIGIN = 'https://api.zoominfo.com/gtm';
+	nodeType.description.properties = nodeType.description.properties.map((property) => {
+		if (property.name !== 'operation' || !property.options) return property;
+		return {
+			...property,
+			options: property.options.map((option) => {
+				const own = option.routing?.request?.baseURL;
+				if (!own?.startsWith(LIVE_ORIGIN)) return option;
+				return {
+					...option,
+					routing: {
+						...option.routing,
+						request: { ...option.routing.request, baseURL: baseURL + own.slice(LIVE_ORIGIN.length) },
+					},
+				};
+			}),
+		};
+	});
+
 	const node = {
 		id: 'zoominfo-test-node',
 		name: 'ZoomInfo',
